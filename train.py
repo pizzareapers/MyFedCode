@@ -1,4 +1,7 @@
 import sys
+
+sys.path.append('')  # please put the project root directory here
+
 import torch
 import torch.nn as nn
 from network.get_network import GetNetwork
@@ -14,17 +17,19 @@ from tqdm import tqdm
 from copy import deepcopy
 from torch.cuda.amp import autocast, GradScaler
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 def get_argparse():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, default='vlcs',
-                        choices=['pacs', 'officehome', 'terrainc', 'office_caltech_10', 'domainnet', 'vlcs'],
+    parser.add_argument("--dataset", type=str, default='pacs',
+                        choices=['pacs', 'officehome', 'domainnet', 'vlcs'],
                         help='Name of dataset')
     parser.add_argument("--model", type=str, default='vit_b16',
-                        choices=['vit_b16', 'resnet18', 'resnet50'], help='model name')
+                        choices=['vit_b16'], help='model name')
     parser.add_argument("--test_domain", type=str, default='c',
                         choices=['p', 'a', 'c', 's', 'r'], help='the domain name for testing')
-    parser.add_argument('--batch_size', help='batch_size', type=int, default=64)
+    parser.add_argument('--batch_size', help='batch_size', type=int, default=128)
     parser.add_argument('--local_epochs', help='epochs number', type=int, default=30)
     parser.add_argument('--comm', help='epochs number', type=int, default=400)
     parser.add_argument('--lr', help='learning rate', type=float, default=0.001)
@@ -33,6 +38,7 @@ def get_argparse():
                         help="learning rate scheduler policy")
     parser.add_argument("--fair", type=str, default='acc', choices=['acc', 'loss'],
                         help="the fairness metric for FedAvg")
+    parser.add_argument('--alpha', help='weight factor for KL divergence loss', type=float, default=1)
     parser.add_argument('--note', help='note of experimental settings', type=str, default='generalization_adjustment')
     parser.add_argument('--display', help='display in controller', default=True, action='store_true')
     parser.add_argument('--resume', help='path to checkpoint to resume from', type=str,
@@ -58,7 +64,6 @@ elif args.dataset == 'vlcs':
     train_domain_list = ['v', 'l', 'c', 's']
     num_classes = 5
 elif args.dataset == 'domainnet':
-    # Import and use the DomainNet dataset class
     from data_loader.domainnet_dataset import DomainNet_FedDG
     dataobj = DomainNet_FedDG(test_domain=args.test_domain, batch_size=args.batch_size)
     train_domain_list = ['c', 'i', 'p', 'q', 'r', 's']
@@ -67,18 +72,21 @@ else:
     raise ValueError(f"Dataset '{args.dataset}' not supported")
 
 
-def epoch_site_train(epochs, site_name, model_dual, model_single, optimizer_dual, optimizer_single, scheduler_dual,
-                     scheduler_single, c_ci_dual, c_ci_single, dataloader, log_ten):
 
+def epoch_site_train(epochs, site_name, model_dual, model_single, optimizer_dual, optimizer_single, scheduler_dual,
+                     scheduler_single, c_ci_dual, c_ci_single, dataloader, log_ten, args):
+    # Set models to training mode
     model_dual.train()
     model_single.train()
 
     dual_correct_count, dual_total_count, dual_loss = 0, 0, 0
     single_correct_count, single_total_count, single_loss = 0, 0, 0
 
+    # Initialize GradScalers for mixed precision
     scaler_dual = GradScaler()
     scaler_single = GradScaler()
 
+    # Iterate over the dataloader
     for i, data_list in enumerate(dataloader):
         imgs, labels, domain_labels = data_list
         imgs = imgs.cuda()
@@ -88,6 +96,7 @@ def epoch_site_train(epochs, site_name, model_dual, model_single, optimizer_dual
         if labels == None:
             print("label is None!")
 
+        # Freeze model_dual, update model_single
         for param in model_dual.parameters():
             param.requires_grad = False
         for name, param in get_shared_adapter(model_single).items():
@@ -95,20 +104,22 @@ def epoch_site_train(epochs, site_name, model_dual, model_single, optimizer_dual
 
         with torch.no_grad():
             with autocast():
-                output_dual = model_dual(imgs)
+                output_dual = model_dual(imgs)  # Forward pass for model_dual
         with autocast():
-            output_single = model_single(imgs)
-
+            output_single = model_single(imgs)  # Forward pass for model_single
+            # Compute KL divergence and cross-entropy losses
             loss_KL_single = F.kl_div(F.log_softmax(output_single, dim=1), F.softmax(output_dual, dim=1),
                                       reduction='batchmean')
             loss_CE_single = F.cross_entropy(output_single, labels)
-            loss_single = loss_KL_single + loss_CE_single
+            loss_single = loss_CE_single + args.alpha * loss_KL_single
 
+        # Update model_single with mixed precision
         optimizer_single.zero_grad()
         scaler_single.scale(loss_single).backward()
-        scaler_single.step(optimizer_single, c_ci_single)
+        scaler_single.step(optimizer_single, c_ci_single)  # Assuming optimizer.step() accepts c_ci_single
         scaler_single.update()
 
+        # Freeze model_single, update model_dual
         for param in model_single.parameters():
             param.requires_grad = False
         for name, param in get_local_adapter(model_dual).items():
@@ -116,25 +127,30 @@ def epoch_site_train(epochs, site_name, model_dual, model_single, optimizer_dual
 
         with torch.no_grad():
             with autocast():
-                output_single = model_single(imgs)
+                output_single = model_single(imgs)  # Forward pass for model_single
         with autocast():
-            output_dual = model_dual(imgs)
+            output_dual = model_dual(imgs)  # Forward pass for model_dual
+            # Compute KL divergence and cross-entropy losses
             loss_KL_dual = F.kl_div(F.log_softmax(output_dual, dim=1), F.softmax(output_single, dim=1),
                                     reduction='batchmean')
             loss_CE_dual = F.cross_entropy(output_dual, labels)
-            loss_dual = loss_KL_dual + loss_CE_dual
+            loss_dual = loss_CE_dual + args.alpha * loss_KL_dual
 
+        # Update model_dual with mixed precision
         optimizer_dual.zero_grad()
         scaler_dual.scale(loss_dual).backward()
         scaler_dual.step(optimizer_dual, c_ci_dual)
         scaler_dual.update()
 
+        # Log training losses
         log_ten.add_scalar(f'{site_name}_train_loss_dual', loss_dual.item(), epochs * len(dataloader) + i)
         log_ten.add_scalar(f'{site_name}_train_loss_single', loss_single.item(), epochs * len(dataloader) + i)
 
+        # Update classification metrics
         epoch_dual_correct, epoch_dual_total, epoch_dual_loss = classification_update(output_dual, labels)
         epoch_single_correct, epoch_single_total, epoch_single_loss = classification_update(output_single, labels)
 
+        # Accumulate metrics
         dual_correct_count += epoch_dual_correct
         dual_total_count += epoch_dual_total
         dual_loss += epoch_dual_loss
@@ -142,11 +158,13 @@ def epoch_site_train(epochs, site_name, model_dual, model_single, optimizer_dual
         single_total_count += epoch_single_total
         single_loss += epoch_single_loss
 
+    # Log training accuracy
     log_ten.add_scalar(f'{site_name}_train_acc_dual',
                        classification_results(dual_correct_count, dual_total_count, dual_loss)['acc'], epochs)
     log_ten.add_scalar(f'{site_name}_train_acc_single',
                        classification_results(single_correct_count, single_total_count, single_loss)['acc'], epochs)
 
+    # Update learning rate schedulers
     scheduler_dual.step()
     scheduler_single.step()
 
@@ -155,7 +173,6 @@ def epoch_site_train(epochs, site_name, model_dual, model_single, optimizer_dual
 
 def site_train(comm_rounds, site_name, args, model_dual, model_single, optimizer_dual, optimizer_single,
                scheduler_dual, scheduler_single, c_ci_dual, c_ci_single, dataloader, log_ten):
-
     tbar = tqdm(range(args.local_epochs))
 
     site_single_gradients = []
@@ -165,7 +182,7 @@ def site_train(comm_rounds, site_name, args, model_dual, model_single, optimizer
         model_dual, model_single = epoch_site_train(comm_rounds * args.local_epochs + local_epoch, site_name,
                                                     model_dual, model_single, optimizer_dual,
                                                     optimizer_single, scheduler_dual, scheduler_single, c_ci_dual,
-                                                    c_ci_single, dataloader, log_ten)
+                                                    c_ci_single, dataloader, log_ten, args)
 
         orig_single_adapter = list(get_shared_adapter(deepcopy(model_single)).values())
         updated_single_adapter = list(get_shared_adapter(model_single).values())
@@ -183,6 +200,7 @@ def GetFedModel(args, num_classes):
     nn.init.normal_(shared_adapter_down.weight, mean=0.0, std=0.02)
     nn.init.normal_(shared_adapter_up.weight, mean=0.0, std=0.02)
 
+
     client_dual_model, client_single_model, _ = GetNetwork(args, num_classes, shared_adapter_down, shared_adapter_up)
     client_dual_model = client_dual_model.cuda()
     client_single_model = client_single_model.cuda()
@@ -190,12 +208,13 @@ def GetFedModel(args, num_classes):
     client_dual_model = nn.DataParallel(client_dual_model)
     client_single_model = nn.DataParallel(client_single_model)
 
+
     dual_model_dict = {}
     single_model_dict = {}
 
+
     dual_optimizer_dict = {}
     single_optimizer_dict = {}
-
     client_dual_optimizer = Scaffold(
         [param for name, param in get_local_adapter(client_dual_model).items()],
         lr=args.lr,
@@ -217,12 +236,13 @@ def GetFedModel(args, num_classes):
     dual_c = GenZeroParamList([param for name, param in get_local_adapter(client_dual_model).items()])
     single_c = GenZeroParamList([param for name, param in get_shared_adapter(client_single_model).items()])
 
+
     for domain_name in train_domain_list:
         dual_model_dict[domain_name], single_model_dict[domain_name], _ = (
             GetNetwork(args, num_classes, shared_adapter_down, shared_adapter_up))
         dual_model_dict[domain_name] = dual_model_dict[domain_name].cuda()
         single_model_dict[domain_name] = single_model_dict[domain_name].cuda()
-
+        # 将模型包装为 DataParallel
         dual_model_dict[domain_name] = nn.DataParallel(dual_model_dict[domain_name])
         single_model_dict[domain_name] = nn.DataParallel(single_model_dict[domain_name])
 
@@ -230,6 +250,7 @@ def GetFedModel(args, num_classes):
             [param for name, param in get_local_adapter(dual_model_dict[domain_name]).items()])
         single_ci_dict[domain_name] = GenZeroParamList(
             [param for name, param in get_shared_adapter(single_model_dict[domain_name]).items()])
+
 
         dual_optimizer_dict[domain_name] = Scaffold(
             [param for name, param in get_local_adapter(dual_model_dict[domain_name]).items()],
@@ -257,6 +278,7 @@ def GetFedModel(args, num_classes):
 
 def main():
     file_name = 'FedSDAF_' + os.path.split(__file__)[1].replace('.py', '')
+
     args = get_argparse()
 
     log_dir, tensorboard_dir = Gen_Log_Dir(args, file_name=file_name)
@@ -266,10 +288,12 @@ def main():
 
     dataloader_dict, dataset_dict = dataobj.GetData()
 
+    # Initialize models, optimizers, etc.
     (client_dual_model, client_single_model, dual_model_dict, single_model_dict,
      client_dual_optimizer, client_single_optimizer, dual_optimizer_dict, single_optimizer_dict,
      dual_scheduler_dict, single_scheduler_dict, dual_ci_dict, single_ci_dict, dual_c, single_c) = GetFedModel(args, num_classes)
 
+    '''weight_dict相关'''
     weight_dict = {}
     site_results_before_avg = {}
     site_results_after_avg = {}
@@ -278,14 +302,17 @@ def main():
         site_results_before_avg[site_name] = None
         site_results_after_avg[site_name] = None
 
+    # FedUpdate(dual_model_dict, client_dual_model)
     step_size_decay = args.step_size / args.comm
 
+    # Save best accuracy for each test domain
     best_domain_acc = {}
     best_domain_info = {}
     for test_domain in train_domain_list:
         best_domain_acc[test_domain] = 0.0
         best_domain_info[test_domain] = {'round': 0, 'train_domain': '', 'acc': 0.0, 'phase': ''}
 
+    # Load from checkpoint if resume path is provided
     start_round = 0
     if args.resume and args.resume != '':
         start_round, weight_dict, dual_c, single_c, dual_ci_dict, single_ci_dict = load_from_checkpoint(
@@ -331,18 +358,21 @@ def main():
                                                              [param for name, param in get_shared_adapter(
                                                                  single_model_dict[domain_name]).items()], K)
 
+        # Valid all domains
         log_file.info("\n===== Before Avg Domain Valid =====")
         for val_domain in train_domain_list:
             site_evaluation_for_all_domain(i, val_domain, dual_model_dict, log_file, args, dataloader_dict,
                                            train_domain_list, note='before_avg')
         log_file.info("===== Before Avg Valid Complete =====")
 
+        # Test all domains
         log_file.info("\n===== Before Avg Domain Test =====")
         before_avg_results = {}
         for test_domain in train_domain_list:
             before_avg_results[test_domain] = test_func(i, test_domain, dual_model_dict, log_file, args,
                                                         dataloader_dict, train_domain_list, note='before_avg')
 
+            # Check if new best accuracy for this test domain
             for train_domain, acc in before_avg_results[test_domain].items():
                 if acc > best_domain_acc[test_domain]:
                     best_domain_acc[test_domain] = acc
@@ -353,6 +383,7 @@ def main():
                         'phase': 'before_avg'
                     }
 
+                    # Save the best model
                     SaveCheckPoint(args, dual_model_dict[train_domain], args.comm,
                                    os.path.join(log_dir, 'checkpoints'),
                                    dual_optimizer_dict[train_domain],
@@ -371,6 +402,7 @@ def main():
 
         log_file.info("===== Before Avg Test Complete =====")
 
+
         dual_c = UpdateServerControl(dual_c, dual_ci_dict, weight_dict)
         single_c = UpdateServerControl(single_c, single_ci_dict, weight_dict)
 
@@ -385,36 +417,40 @@ def main():
                 strict=True
             )
 
+
         shared_adapter_params = get_shared_adapter(client_single_model)
         for domain_name in train_domain_list:
             for name, param in shared_adapter_params.items():
                 dual_model_dict[domain_name].state_dict()[name].copy_(param)
+
 
         for domain_name in train_domain_list:
             site_results_after_avg[domain_name] = site_evaluation(i, domain_name, args, dual_model_dict[domain_name],
                                                                   dataloader_dict[domain_name]['val'],
                                                                   log_file, log_ten, note='after_avg')
 
-
         weight_dict = refine_weight_dict_by_GA(weight_dict, site_results_before_avg, site_results_after_avg,
                                                args.step_size - (i - 1) * step_size_decay, fair_metric=args.fair)
+
         log_str = f'Round {i} FedAvg weight: {weight_dict}'
         log_file.info(log_str)
 
-
+        # Valid all domains
         log_file.info("\n===== After Avg Domain Valid =====")
         for val_domain in train_domain_list:
             site_evaluation_for_all_domain(i, val_domain, dual_model_dict, log_file, args, dataloader_dict,
                                            train_domain_list, note='before_avg')
         log_file.info("===== After Avg Valid Complete =====")
 
-
+        # Test all domains
+        # Existing after_avg test
         log_file.info("\n===== After Avg Domain Test =====")
         after_avg_results = {}
         for test_domain in train_domain_list:
             after_avg_results[test_domain] = test_func(i, test_domain, dual_model_dict, log_file, args, dataloader_dict,
                                                        train_domain_list, note='after_avg')
 
+            # Check if new best accuracy for this test domain
             for train_domain, acc in after_avg_results[test_domain].items():
                 if acc > best_domain_acc[test_domain]:
                     best_domain_acc[test_domain] = acc
@@ -425,6 +461,7 @@ def main():
                         'phase': 'after_avg'
                     }
 
+                    # Save the best model
                     SaveCheckPoint(args, dual_model_dict[train_domain], args.comm,
                                    os.path.join(log_dir, 'checkpoints'),
                                    dual_optimizer_dict[train_domain],
@@ -443,6 +480,7 @@ def main():
                         f"Test Domain: {test_domain} | Best Round: {info['round']} | Train Domain: {info['train_domain']} | Phase: {info['phase']} | Acc: {info['acc'] * 100:.2f}%")
         log_file.info("===== After Avg Test Complete =====")
 
+        # Save checkpoint for resumption every ckpt_freq rounds
         if i % args.ckpt_freq == 0 or i == args.comm:
             save_path = os.path.join(log_dir, 'checkpoints', 'latest_checkpoint.pt')
             save_checkpoint_for_resume(
@@ -453,6 +491,7 @@ def main():
             )
             log_file.info(f"Saved checkpoint at round {i} to {save_path}")
 
+        # Print summary of the best performance for each domain at the end of each round
         log_file.info("\n===== Current Best Performance Summary =====")
         for test_domain in train_domain_list:
             info = best_domain_info[test_domain]
