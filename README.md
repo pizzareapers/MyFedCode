@@ -1,6 +1,6 @@
 # Note 
 
-The remaining code components are currently being organized and will be released progressively.
+The remaining code components are currently being organized and will be released very soon.
  
 ## Requirements 
 
