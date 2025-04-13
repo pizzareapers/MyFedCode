@@ -14,7 +14,7 @@ def Shuffle_Batch_Data(data_in):
     random.shuffle(idx_list)
     return data_in[idx_list]
 
-def site_evaluation(epochs, site_name, args, model, dataloader, log_file, log_ten, note='after_fed'):
+def site_evaluation(model, dataloader):
     model.eval()
     total_correct_count = 0
     total_count = 0
@@ -28,10 +28,6 @@ def site_evaluation(epochs, site_name, args, model, dataloader, log_file, log_te
             total_count += count
             total_loss += loss
     results_dict = classification_results(total_correct_count, total_count, total_loss)
-    log_ten.add_scalar(f'{note}_{site_name}_loss', results_dict['loss'], epochs)
-    log_ten.add_scalar(f'{note}_{site_name}_acc', results_dict['acc'], epochs)
-    log_file.info(f'{note} Round: {epochs:3d} | Epochs: {args.local_epochs*epochs:3d} | Domain: {site_name} | loss: {results_dict["loss"]:.4f} | Acc: {results_dict["acc"]*100:.2f}%')
-
     return results_dict
 
 

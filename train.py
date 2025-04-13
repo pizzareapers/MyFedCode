@@ -1,7 +1,4 @@
 import sys
-
-sys.path.append('')  # please put the project root directory here
-
 import torch
 import torch.nn as nn
 from network.get_network import GetNetwork
@@ -22,23 +19,20 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 def get_argparse():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, default='pacs',
-                        choices=['pacs', 'officehome', 'domainnet', 'vlcs'],
+    parser.add_argument("--dataset", type=str, default='pacs', choices=['pacs', 'officehome', 'domainnet', 'vlcs'],
                         help='Name of dataset')
-    parser.add_argument("--model", type=str, default='vit_b16',
-                        choices=['vit_b16'], help='model name')
+    parser.add_argument("--model", type=str, default='vit_b16', help='model name')
     parser.add_argument("--test_domain", type=str, default='c',
                         choices=['p', 'a', 'c', 's', 'r'], help='the domain name for testing')
     parser.add_argument('--batch_size', help='batch_size', type=int, default=128)
     parser.add_argument('--local_epochs', help='epochs number', type=int, default=30)
-    parser.add_argument('--comm', help='epochs number', type=int, default=400)
+    parser.add_argument('--comm', help='epochs number', type=int, default=200)
     parser.add_argument('--lr', help='learning rate', type=float, default=0.001)
     parser.add_argument('--step_size', help='rate weight step', type=float, default=0.2)
     parser.add_argument("--lr_policy", type=str, default='step', choices=['step'],
                         help="learning rate scheduler policy")
     parser.add_argument("--fair", type=str, default='acc', choices=['acc', 'loss'],
                         help="the fairness metric for FedAvg")
-    parser.add_argument('--alpha', help='weight factor for KL divergence loss', type=float, default=1)
     parser.add_argument('--note', help='note of experimental settings', type=str, default='generalization_adjustment')
     parser.add_argument('--display', help='display in controller', default=True, action='store_true')
     parser.add_argument('--resume', help='path to checkpoint to resume from', type=str,
@@ -111,7 +105,7 @@ def epoch_site_train(epochs, site_name, model_dual, model_single, optimizer_dual
             loss_KL_single = F.kl_div(F.log_softmax(output_single, dim=1), F.softmax(output_dual, dim=1),
                                       reduction='batchmean')
             loss_CE_single = F.cross_entropy(output_single, labels)
-            loss_single = loss_CE_single + args.alpha * loss_KL_single
+            loss_single = loss_CE_single + loss_KL_single
 
         # Update model_single with mixed precision
         optimizer_single.zero_grad()
@@ -134,7 +128,7 @@ def epoch_site_train(epochs, site_name, model_dual, model_single, optimizer_dual
             loss_KL_dual = F.kl_div(F.log_softmax(output_dual, dim=1), F.softmax(output_single, dim=1),
                                     reduction='batchmean')
             loss_CE_dual = F.cross_entropy(output_dual, labels)
-            loss_dual = loss_CE_dual + args.alpha * loss_KL_dual
+            loss_dual = loss_CE_dual + loss_KL_dual
 
         # Update model_dual with mixed precision
         optimizer_dual.zero_grad()
@@ -323,7 +317,7 @@ def main():
         )
 
 
-    for i in range(args.comm + 1):
+    for i in range(start_round, args.comm + 1):
 
         single_gradients = []
 
@@ -343,9 +337,7 @@ def main():
                                                dataloader_dict[domain_name]['train'], log_ten)
             single_gradients.append(site_single_gradients)
 
-            site_results_before_avg[domain_name] = site_evaluation(i, domain_name, args, dual_model_dict[domain_name],
-                                                                   dataloader_dict[domain_name]['val'],
-                                                                   log_file, log_ten, note='before_avg')
+            site_results_before_avg[domain_name] = site_evaluation(dual_model_dict[domain_name], dataloader_dict[domain_name]['val'])
 
             dual_ci_dict[domain_name] = UpdateLocalControl(dual_c, dual_ci_dict[domain_name],
                                                            [param for name, param in
@@ -417,7 +409,6 @@ def main():
                 strict=True
             )
 
-
         shared_adapter_params = get_shared_adapter(client_single_model)
         for domain_name in train_domain_list:
             for name, param in shared_adapter_params.items():
@@ -425,9 +416,7 @@ def main():
 
 
         for domain_name in train_domain_list:
-            site_results_after_avg[domain_name] = site_evaluation(i, domain_name, args, dual_model_dict[domain_name],
-                                                                  dataloader_dict[domain_name]['val'],
-                                                                  log_file, log_ten, note='after_avg')
+            site_results_after_avg[domain_name] = site_evaluation(dual_model_dict[domain_name], dataloader_dict[domain_name]['val'])
 
         weight_dict = refine_weight_dict_by_GA(weight_dict, site_results_before_avg, site_results_after_avg,
                                                args.step_size - (i - 1) * step_size_decay, fair_metric=args.fair)
