@@ -91,7 +91,7 @@ class DomainNet_SingleDomain():
             self.dataset = MetaDataset(imgs, labels, self.domain_label, self.transform)
 
     @staticmethod
-    @lru_cache(maxsize=16)  # Cache results to avoid repeated file parsing
+    @lru_cache(maxsize=0)  # Cache results to avoid repeated file parsing
     def _read_txt_cached(txt_path, root_path):
         imgs = []
         labels = []
@@ -146,7 +146,7 @@ class DomainNet_SingleDomain():
 
 
 class DomainNet_FedDG():
-    def __init__(self, test_domain, batch_size, root_path=domainnet_path, use_cache=True,
+    def __init__(self, test_domain, batch_size, root_path=domainnet_path, use_cache=False,
                  cache_size=1000, val_ratio=0.2, seed=42):
         self.batch_size = batch_size
         self.domain_list = list(domainnet_name_dict.keys())
@@ -165,7 +165,7 @@ class DomainNet_FedDG():
         self.test_dataset = self.site_dataset_dict[self.test_domain]['test']
         self.test_dataloader = self.site_dataloader_dict[self.test_domain]['test']
 
-    def _create_single_site(self, domain_name, root_path, batch_size=16, use_cache=True, cache_size=1000):
+    def _create_single_site(self, domain_name, root_path, batch_size=16, use_cache=False, cache_size=1000):
         dataset_dict = {
             'train': DomainNet_SingleDomain(
                 root_path=root_path,
