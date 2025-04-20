@@ -1,6 +1,8 @@
 ## Overview
-FedSDAF is a novel federated learning framework addressing domain shift challenges in non-IID data scenarios. 
-![](figure/Optimization_process.png)
+FedSDAF is a novel federated learning framework addressing domain shift challenges in non-IID data scenarios.
+<div align="center">
+    <img src="figure/Optimization_process.png" alt="Optimization Process" width="50%">
+</div>
 
 ## Installation
 Create and activate conda environment
@@ -79,15 +81,6 @@ python -u $ROOT_DIR/FedSDAF/data_loader/split_label.py \
 ## Run
 
 ```sh
-# Set root directory (Please put the root directory here)
-ROOT_DIR=
-# set the dataset locations
-cat > $ROOT_DIR/FedSDAF/configs/default.py <<EOF
-pacs_path = '$ROOT_DIR/FedSDAF/datasets/pacs/'
-officehome_path = '$ROOT_DIR/FedSDAF/datasets/office_home/'
-log_count_path = '$ROOT_DIR/FedSDAF/log/'
-vlcs_path = '$ROOT_DIR/FedSDAF/datasets/vlcs/'
-EOF
 # Train on PACS dataset
 nohup python -u $ROOT_DIR/FedSDAF/train.py \
     --dataset pacs \

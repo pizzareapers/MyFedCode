@@ -5,7 +5,7 @@ from network.get_network import GetNetwork
 from utils.log_utils import *
 from torch.utils.tensorboard.writer import SummaryWriter
 from utils.classification_metric import classification_update, classification_results
-from utils.fed_merge import get_shared_adapter, get_local_adapter, aggregate, apply_grads
+from utils.fed_merge import get_invariant_adapter, get_aware_adapter, aggregate, apply_grads
 from utils.trainval_func import site_evaluation, SaveCheckPoint, site_evaluation_for_all_domain, test_func, load_from_checkpoint, save_checkpoint_for_resume
 from utils.weight_adjust import refine_weight_dict_by_GA
 from network.FedOptimizer.Scaffold import *
@@ -93,7 +93,7 @@ def epoch_site_train(epochs, site_name, model_dual, model_single, optimizer_dual
         # Freeze model_dual, update model_single
         for param in model_dual.parameters():
             param.requires_grad = False
-        for name, param in get_shared_adapter(model_single).items():
+        for name, param in get_invariant_adapter(model_single).items():
             param.requires_grad = True
 
         with torch.no_grad():
@@ -116,7 +116,7 @@ def epoch_site_train(epochs, site_name, model_dual, model_single, optimizer_dual
         # Freeze model_single, update model_dual
         for param in model_single.parameters():
             param.requires_grad = False
-        for name, param in get_local_adapter(model_dual).items():
+        for name, param in get_aware_adapter(model_dual).items():
             param.requires_grad = True
 
         with torch.no_grad():
@@ -178,8 +178,8 @@ def site_train(comm_rounds, site_name, args, model_dual, model_single, optimizer
                                                     optimizer_single, scheduler_dual, scheduler_single, c_ci_dual,
                                                     c_ci_single, dataloader, log_ten, args)
 
-        orig_single_adapter = list(get_shared_adapter(deepcopy(model_single)).values())
-        updated_single_adapter = list(get_shared_adapter(model_single).values())
+        orig_single_adapter = list(get_invariant_adapter(deepcopy(model_single)).values())
+        updated_single_adapter = list(get_invariant_adapter(model_single).values())
         for orig_param, updated_param in zip(orig_single_adapter, updated_single_adapter):
             site_single_gradients.append(orig_param.detach() - updated_param.detach())
 
@@ -189,34 +189,32 @@ def site_train(comm_rounds, site_name, args, model_dual, model_single, optimizer
 def GetFedModel(args, num_classes):
     dim = 768
     adapter_dim = dim // 4
-    shared_adapter_down = nn.Linear(dim, adapter_dim)
-    shared_adapter_up = nn.Linear(adapter_dim, dim)
-    nn.init.normal_(shared_adapter_down.weight, mean=0.0, std=0.02)
-    nn.init.normal_(shared_adapter_up.weight, mean=0.0, std=0.02)
+    invariant_adapter_down = nn.Linear(dim, adapter_dim)
+    invariant_adapter_up = nn.Linear(adapter_dim, dim)
+    nn.init.normal_(invariant_adapter_down.weight, mean=0.0, std=0.02)
+    nn.init.normal_(invariant_adapter_up.weight, mean=0.0, std=0.02)
 
 
-    client_dual_model, client_single_model, _ = GetNetwork(args, num_classes, shared_adapter_down, shared_adapter_up)
+    client_dual_model, client_single_model, _ = GetNetwork(args, num_classes, invariant_adapter_down, invariant_adapter_up)
     client_dual_model = client_dual_model.cuda()
     client_single_model = client_single_model.cuda()
 
     client_dual_model = nn.DataParallel(client_dual_model)
     client_single_model = nn.DataParallel(client_single_model)
 
-
     dual_model_dict = {}
     single_model_dict = {}
-
 
     dual_optimizer_dict = {}
     single_optimizer_dict = {}
     client_dual_optimizer = Scaffold(
-        [param for name, param in get_local_adapter(client_dual_model).items()],
+        [param for name, param in get_aware_adapter(client_dual_model).items()],
         lr=args.lr,
         momentum=0.9,
         weight_decay=5e-4
     )
     client_single_optimizer = Scaffold(
-        [param for name, param in get_shared_adapter(client_single_model).items()],
+        [param for name, param in get_invariant_adapter(client_single_model).items()],
         lr=args.lr,
         momentum=0.9,
         weight_decay=5e-4
@@ -227,13 +225,14 @@ def GetFedModel(args, num_classes):
     dual_ci_dict = {}
     single_ci_dict = {}
 
-    dual_c = GenZeroParamList([param for name, param in get_local_adapter(client_dual_model).items()])
-    single_c = GenZeroParamList([param for name, param in get_shared_adapter(client_single_model).items()])
+    dual_c = GenZeroParamList([param for name, param in get_aware_adapter(client_dual_model).items()])
+    single_c = GenZeroParamList([param for name, param in get_invariant_adapter(client_single_model).items()])
 
 
     for domain_name in train_domain_list:
         dual_model_dict[domain_name], single_model_dict[domain_name], _ = (
-            GetNetwork(args, num_classes, shared_adapter_down, shared_adapter_up))
+            GetNetwork(args, num_classes, invariant_adapter_down, invariant_adapter_up))
+
         dual_model_dict[domain_name] = dual_model_dict[domain_name].cuda()
         single_model_dict[domain_name] = single_model_dict[domain_name].cuda()
         # 将模型包装为 DataParallel
@@ -241,19 +240,19 @@ def GetFedModel(args, num_classes):
         single_model_dict[domain_name] = nn.DataParallel(single_model_dict[domain_name])
 
         dual_ci_dict[domain_name] = GenZeroParamList(
-            [param for name, param in get_local_adapter(dual_model_dict[domain_name]).items()])
+            [param for name, param in get_aware_adapter(dual_model_dict[domain_name]).items()])
         single_ci_dict[domain_name] = GenZeroParamList(
-            [param for name, param in get_shared_adapter(single_model_dict[domain_name]).items()])
+            [param for name, param in get_invariant_adapter(single_model_dict[domain_name]).items()])
 
 
         dual_optimizer_dict[domain_name] = Scaffold(
-            [param for name, param in get_local_adapter(dual_model_dict[domain_name]).items()],
+            [param for name, param in get_aware_adapter(dual_model_dict[domain_name]).items()],
             lr=args.lr,
             momentum=0.9,
             weight_decay=5e-4
         )
         single_optimizer_dict[domain_name] = Scaffold(
-            [param for name, param in get_shared_adapter(single_model_dict[domain_name]).items()],
+            [param for name, param in get_invariant_adapter(single_model_dict[domain_name]).items()],
             lr=args.lr,
             momentum=0.9,
             weight_decay=5e-4
@@ -287,7 +286,6 @@ def main():
      client_dual_optimizer, client_single_optimizer, dual_optimizer_dict, single_optimizer_dict,
      dual_scheduler_dict, single_scheduler_dict, dual_ci_dict, single_ci_dict, dual_c, single_c) = GetFedModel(args, num_classes)
 
-    '''weight_dict相关'''
     weight_dict = {}
     site_results_before_avg = {}
     site_results_after_avg = {}
@@ -341,13 +339,13 @@ def main():
 
             dual_ci_dict[domain_name] = UpdateLocalControl(dual_c, dual_ci_dict[domain_name],
                                                            [param for name, param in
-                                                            get_local_adapter(client_dual_model).items()],
+                                                            get_aware_adapter(client_dual_model).items()],
                                                            [param for name, param in
-                                                            get_local_adapter(dual_model_dict[domain_name]).items()], K)
+                                                            get_aware_adapter(dual_model_dict[domain_name]).items()], K)
             single_ci_dict[domain_name] = UpdateLocalControl(single_c, single_ci_dict[domain_name],
                                                              [param for name, param in
-                                                              get_shared_adapter(client_single_model).items()],
-                                                             [param for name, param in get_shared_adapter(
+                                                              get_invariant_adapter(client_single_model).items()],
+                                                             [param for name, param in get_invariant_adapter(
                                                                  single_model_dict[domain_name]).items()], K)
 
         # Valid all domains
@@ -400,7 +398,7 @@ def main():
 
         single_grads = aggregate(single_gradients, weight_dict)
 
-        apply_grads([param for name, param in get_shared_adapter(client_single_model).items()], single_grads,
+        apply_grads([param for name, param in get_invariant_adapter(client_single_model).items()], single_grads,
                     client_single_optimizer, single_c)
 
         for domain_name in train_domain_list:
@@ -409,7 +407,7 @@ def main():
                 strict=True
             )
 
-        shared_adapter_params = get_shared_adapter(client_single_model)
+        shared_adapter_params = get_invariant_adapter(client_single_model)
         for domain_name in train_domain_list:
             for name, param in shared_adapter_params.items():
                 dual_model_dict[domain_name].state_dict()[name].copy_(param)
