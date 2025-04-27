@@ -230,7 +230,7 @@ def GetFedModel(args, num_classes):
 
         dual_model_dict[domain_name] = dual_model_dict[domain_name].cuda()
         single_model_dict[domain_name] = single_model_dict[domain_name].cuda()
-        # 将模型包装为 DataParallel
+
         dual_model_dict[domain_name] = nn.DataParallel(dual_model_dict[domain_name])
         single_model_dict[domain_name] = nn.DataParallel(single_model_dict[domain_name])
 
