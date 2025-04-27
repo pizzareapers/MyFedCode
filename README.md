@@ -51,7 +51,7 @@ Please put the datasets in the following directory structure:
 │   │   ├── sketch
 ```
 
-Then set the dataset locations in the config file.
+Then set the dataset locations in the configs.py.
 ```sh
 # Set root directory (Please put the root directory here)
 ROOT_DIR=
@@ -86,8 +86,26 @@ nohup python -u $ROOT_DIR/FedSDAF/train.py \
     --dataset pacs \
     --batch_size 128 \
     > $ROOT_DIR/FedSDAF/train_log/train_PACS.log 2>&1 &
+
+# Train on OfficeHome dataset
+nohup python -u $ROOT_DIR/FedSDAF/train.py \
+    --dataset officehome \
+    --batch_size 128 \
+    > $ROOT_DIR/FedSDAF/train_log/train_OfficeHome.log 2>&1 &
+
+# Train on VLCS dataset
+nohup python -u $ROOT_DIR/FedSDAF/train.py \
+    --dataset vlcs \
+    --batch_size 64 \
+    > $ROOT_DIR/FedSDAF/train_log/train_VLCS.log 2>&1 &
+
+# Train on DomainNet dataset
+nohup python -u $ROOT_DIR/FedSDAF/train.py \
+    --dataset domainnet \
+    --batch_size 1024 \
+    > $ROOT_DIR/FedSDAF/train_log/train_DomainNet.log 2>&1 &
 ```
-The log and checkpoints files will be saved in `log_count_path` in the config file.
+The log and checkpoints files will be saved in `log_count_path` in the configs.py.
 
 ## Acknowledgments 
 
