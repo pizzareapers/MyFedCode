@@ -28,19 +28,19 @@ def Cal_Weight_Dict(dataset_dict, site_list=None):
     return weight_dict
 
 
-def get_shared_adapter(model):
-    shared_adapter_param = {}
+def get_invariant_adapter(model):
+    invariant_adapter_param = {}
     for name, param in model.named_parameters():
-        if 'adapter_shared_down' in name or 'adapter_shared_up' in name or 'adapter_norm' in name:
-            shared_adapter_param[name] = param
-    return shared_adapter_param
+        if 'adapter_invariant_down' in name or 'adapter_invariant_up' in name or 'adapter_norm' in name:
+            invariant_adapter_param[name] = param
+    return invariant_adapter_param
 
-def get_local_adapter(model):
-    local_adapter_param = {}
+def get_aware_adapter(model):
+    aware_adapter_param = {}
     for name, param in model.named_parameters():
-        if 'adapter_local_down' in name or 'adapter_local_up' in name or 'adapter_norm' in name:
-            local_adapter_param[name] = param
-    return local_adapter_param
+        if 'adapter_aware_down' in name or 'adapter_aware_up' in name or 'adapter_norm' in name:
+            aware_adapter_param[name] = param
+    return aware_adapter_param
 
 
 def update_adapter_state_dict(model, adapter_state):

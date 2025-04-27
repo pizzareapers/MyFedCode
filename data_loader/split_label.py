@@ -86,8 +86,8 @@ def generate_labels(root_path, dataset_type):
 
 
         train_images = all_images[:train_split]
-        val_images = all_images[:train_split]
-        test_images = all_images
+        val_images = all_images[train_split:val_split]
+        test_images = all_images[val_split:]
 
         # Write split files
         splits = {

@@ -1,5 +1,4 @@
 import os
-from network.get_network import GetNetwork
 import torch
 import torch.nn as nn
 from configs.default import *

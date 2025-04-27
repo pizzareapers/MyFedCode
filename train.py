@@ -1,9 +1,9 @@
 import sys
 import torch
 import torch.nn as nn
-from network.get_network import GetNetwork
 from utils.log_utils import *
 from torch.utils.tensorboard.writer import SummaryWriter
+from network.modified_vit import DualAdapterViT, SingleAdapterViT
 from utils.classification_metric import classification_update, classification_results
 from utils.fed_merge import get_invariant_adapter, get_aware_adapter, aggregate, apply_grads
 from utils.trainval_func import site_evaluation, SaveCheckPoint, site_evaluation_for_all_domain, test_func, load_from_checkpoint, save_checkpoint_for_resume
@@ -14,7 +14,7 @@ from tqdm import tqdm
 from copy import deepcopy
 from torch.cuda.amp import autocast, GradScaler
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 def get_argparse():
@@ -187,15 +187,9 @@ def site_train(comm_rounds, site_name, args, model_dual, model_single, optimizer
 
 
 def GetFedModel(args, num_classes):
-    dim = 768
-    adapter_dim = dim // 4
-    invariant_adapter_down = nn.Linear(dim, adapter_dim)
-    invariant_adapter_up = nn.Linear(adapter_dim, dim)
-    nn.init.normal_(invariant_adapter_down.weight, mean=0.0, std=0.02)
-    nn.init.normal_(invariant_adapter_up.weight, mean=0.0, std=0.02)
+    client_dual_model = DualAdapterViT(num_classes)
+    client_single_model = SingleAdapterViT(num_classes)
 
-
-    client_dual_model, client_single_model, _ = GetNetwork(args, num_classes, invariant_adapter_down, invariant_adapter_up)
     client_dual_model = client_dual_model.cuda()
     client_single_model = client_single_model.cuda()
 
@@ -230,8 +224,9 @@ def GetFedModel(args, num_classes):
 
 
     for domain_name in train_domain_list:
-        dual_model_dict[domain_name], single_model_dict[domain_name], _ = (
-            GetNetwork(args, num_classes, invariant_adapter_down, invariant_adapter_up))
+
+        dual_model_dict[domain_name] = DualAdapterViT(num_classes)
+        single_model_dict[domain_name] = SingleAdapterViT(num_classes)
 
         dual_model_dict[domain_name] = dual_model_dict[domain_name].cuda()
         single_model_dict[domain_name] = single_model_dict[domain_name].cuda()

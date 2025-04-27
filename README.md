@@ -51,64 +51,21 @@ Please put the datasets in the following directory structure:
 │   │   ├── sketch
 ```
 
-Then set the dataset locations in the configs.py.
-```sh
-# Set root directory (Please put the root directory here)
-ROOT_DIR=
-# set the dataset locations
-cat > $ROOT_DIR/FedSDAF/configs/default.py <<EOF
-pacs_path = '$ROOT_DIR/FedSDAF/datasets/pacs/'
-officehome_path = '$ROOT_DIR/FedSDAF/datasets/office_home/'
-log_count_path = '$ROOT_DIR/FedSDAF/log/'
-vlcs_path = '$ROOT_DIR/FedSDAF/datasets/vlcs/'
-EOF
-```
-
-Make label split for officehome and vlcs:
-```sh
-# Set root directory (Please put the root directory here)
-ROOT_DIR=
-# make label split for officehome and vlcs
-python -u $ROOT_DIR/FedSDAF/data_loader/split_label.py \
-    --root_path "$ROOT_DIR/FedSDAF/datasets/office_home" \
-    --dataset 'officehome'
-python -u $ROOT_DIR/FedSDAF/data_loader/split_label.py \
-    --root_path "$ROOT_DIR/FedSDAF/datasets/vlcs" \
-    --dataset 'vlcs'
-```
-
-
-## Run
+Then set the root directory in the make_datasets.sh file and run:
 
 ```sh
-# Train on PACS dataset
-nohup python -u $ROOT_DIR/FedSDAF/train.py \
-    --dataset pacs \
-    --batch_size 128 \
-    > $ROOT_DIR/FedSDAF/train_log/train_PACS.log 2>&1 &
-
-# Train on OfficeHome dataset
-nohup python -u $ROOT_DIR/FedSDAF/train.py \
-    --dataset officehome \
-    --batch_size 128 \
-    > $ROOT_DIR/FedSDAF/train_log/train_OfficeHome.log 2>&1 &
-
-# Train on VLCS dataset
-nohup python -u $ROOT_DIR/FedSDAF/train.py \
-    --dataset vlcs \
-    --batch_size 64 \
-    > $ROOT_DIR/FedSDAF/train_log/train_VLCS.log 2>&1 &
-
-# Train on DomainNet dataset
-nohup python -u $ROOT_DIR/FedSDAF/train.py \
-    --dataset domainnet \
-    --batch_size 1024 \
-    > $ROOT_DIR/FedSDAF/train_log/train_DomainNet.log 2>&1 &
+sh make_datasets.sh
 ```
-The log and checkpoints files will be saved in `log_count_path` in the configs.py.
+
+## Train
+Please set the root directory in the train.sh file. Then run:
+
+```sh
+sh train.sh
+```
+
+The log and checkpoints files will be saved in ./FedSDAF/log.
 
 ## Acknowledgments 
 
 Part of our code is borrowed from the repository [FedDG-GA](https://github.com/MediaBrain-SJTU/FedDG-GA). We thank them for sharing the code.
-
-

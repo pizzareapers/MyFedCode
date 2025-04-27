@@ -5,11 +5,11 @@ from torchvision.models import vit_b_16, ViT_B_16_Weights
 ############################################################################
 
 class DualAdapterInjection(nn.Module):
-    def __init__(self, dim, invariant_adapter_down, invariant_adapter_up):
+    def __init__(self, dim = 768):
         super().__init__()
         self.activation = nn.GELU()
-        self.adapter_invariant_down = invariant_adapter_down
-        self.adapter_invariant_up = invariant_adapter_up
+        self.adapter_invariant_down = nn.Linear(dim, dim // 4)
+        self.adapter_invariant_up = nn.Linear(dim // 4, dim)
         self.adapter_aware_down = nn.Linear(dim, dim // 4)
         self.adapter_aware_up = nn.Linear(dim // 4, dim)
         self.adapter_norm = nn.LayerNorm(dim)
@@ -25,7 +25,7 @@ class DualAdapterInjection(nn.Module):
 
 
 class DualAdapterViT(nn.Module):
-    def __init__(self, invariant_adapter_down, invariant_adapter_up, num_classes):
+    def __init__(self, num_classes):
         super().__init__()
 
         self.vit = vit_b_16(weights=ViT_B_16_Weights.IMAGENET1K_V1)
@@ -33,7 +33,7 @@ class DualAdapterViT(nn.Module):
         hidden_dim = 768
 
         self.adapter_injections = nn.ModuleList([
-            DualAdapterInjection(hidden_dim, invariant_adapter_down, invariant_adapter_up)
+            DualAdapterInjection(hidden_dim)
             for _ in range(len(self.vit.encoder.layers))
         ])
 
@@ -74,11 +74,11 @@ class DualAdapterViT(nn.Module):
 ############################################################################################
 
 class SingleAdapterInjection(nn.Module):
-    def __init__(self, dim, invariant_adapter_down, invariant_adapter_up):
+    def __init__(self, dim):
         super().__init__()
         self.activation = nn.GELU()
-        self.adapter_invariant_down = invariant_adapter_down
-        self.adapter_invariant_up = invariant_adapter_up
+        self.adapter_invariant_down = nn.Linear(dim, dim // 4)
+        self.adapter_invariant_up = nn.Linear(dim // 4, dim)
         self.adapter_norm = nn.LayerNorm(dim)
 
     def forward(self, x):
@@ -89,14 +89,14 @@ class SingleAdapterInjection(nn.Module):
 
 
 class SingleAdapterViT(nn.Module):
-    def __init__(self, invariant_adapter_down, invariant_adapter_up, num_classes):
+    def __init__(self, num_classes):
         super().__init__()
         self.vit = vit_b_16(weights=ViT_B_16_Weights.IMAGENET1K_V1)
 
         hidden_dim = 768
 
         self.adapter_injections = nn.ModuleList([
-            SingleAdapterInjection(hidden_dim, invariant_adapter_down, invariant_adapter_up)
+            SingleAdapterInjection(hidden_dim)
             for _ in range(len(self.vit.encoder.layers))
         ])
 
