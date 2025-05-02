@@ -30,29 +30,6 @@ def site_evaluation(model, dataloader):
     return results_dict
 
 
-def site_evaluation_for_all_domain(comm_round, val_domain, model_dict, log_file, args, dataloader_dict, train_domain_list, note):
-    val_dataloader = dataloader_dict[val_domain]['val']
-    client_domain = train_domain_list.copy()
-
-    for k in client_domain:
-        model = model_dict[k]
-        model = model.cuda()
-        model.eval()
-        total_correct_count = 0
-        total_count = 0
-        total_loss = 0
-        with torch.no_grad():
-            for imgs, labels, domain_labels, in val_dataloader:
-                imgs = imgs.cuda()
-                output = model(imgs)
-                correct_count, count, loss = classification_update(output, labels)
-                total_correct_count += correct_count
-                total_count += count
-                total_loss += loss
-        results_dict = classification_results(total_correct_count, total_count, total_loss)
-        log_file.info(f'{note} Round: {comm_round:3d} | Train Domain: {k} | Val Domain: {val_domain} | Acc: {results_dict["acc"] * 100:.2f}%')
-
-
 def test_func(comm_round, test_domain, model_dict, log_file, args, dataloader_dict, train_domain_list, note):
     test_dataloader = dataloader_dict[test_domain]['test']
     client_domain = train_domain_list.copy()
