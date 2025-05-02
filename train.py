@@ -6,7 +6,7 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from network.modified_vit import DualAdapterViT, SingleAdapterViT
 from utils.classification_metric import classification_update, classification_results
 from utils.fed_merge import get_invariant_adapter, get_aware_adapter, aggregate, apply_grads
-from utils.trainval_func import site_evaluation, SaveCheckPoint, site_evaluation_for_all_domain, test_func, load_from_checkpoint, save_checkpoint_for_resume
+from utils.trainval_func import site_evaluation, SaveCheckPoint, test_func, load_from_checkpoint, save_checkpoint_for_resume
 from utils.weight_adjust import refine_weight_dict_by_GA
 from network.FedOptimizer.Scaffold import *
 import torch.nn.functional as F
@@ -25,7 +25,7 @@ def get_argparse():
     parser.add_argument("--test_domain", type=str, default='c',
                         choices=['p', 'a', 'c', 's', 'r'], help='the domain name for testing')
     parser.add_argument('--batch_size', help='batch_size', type=int, default=128)
-    parser.add_argument('--local_epochs', help='epochs number', type=int, default=30)
+    parser.add_argument('--local_epochs', help='epochs number', type=int, default=2)
     parser.add_argument('--comm', help='epochs number', type=int, default=200)
     parser.add_argument('--lr', help='learning rate', type=float, default=0.001)
     parser.add_argument('--step_size', help='rate weight step', type=float, default=0.2)
@@ -343,12 +343,6 @@ def main():
                                                              [param for name, param in get_invariant_adapter(
                                                                  single_model_dict[domain_name]).items()], K)
 
-        # Valid all domains
-        log_file.info("\n===== Before Avg Domain Valid =====")
-        for val_domain in train_domain_list:
-            site_evaluation_for_all_domain(i, val_domain, dual_model_dict, log_file, args, dataloader_dict,
-                                           train_domain_list, note='before_avg')
-        log_file.info("===== Before Avg Valid Complete =====")
 
         # Test all domains
         log_file.info("\n===== Before Avg Domain Test =====")
@@ -417,12 +411,6 @@ def main():
         log_str = f'Round {i} FedAvg weight: {weight_dict}'
         log_file.info(log_str)
 
-        # Valid all domains
-        log_file.info("\n===== After Avg Domain Valid =====")
-        for val_domain in train_domain_list:
-            site_evaluation_for_all_domain(i, val_domain, dual_model_dict, log_file, args, dataloader_dict,
-                                           train_domain_list, note='before_avg')
-        log_file.info("===== After Avg Valid Complete =====")
 
         # Test all domains
         # Existing after_avg test
