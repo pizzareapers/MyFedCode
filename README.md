@@ -68,4 +68,4 @@ The log and checkpoints files will be saved in ./FedSDAF/log.
 
 ## Acknowledgments 
 
-Part of our code is borrowed from the repository [FedDG-GA](https://github.com/MediaBrain-SJTU/FedDG-GA). We thank them for sharing the code.
+Part of our code is borrowed from the repositories [FedDG-GA](https://github.com/MediaBrain-SJTU/FedDG-GA) and [PLAN](https://github.com/GongShuai8210/PLAN). We thank them for sharing the code.
