@@ -96,21 +96,21 @@ def generate_dataset_splits(root_path):
                         class_images[class_name].append(img_path)
 
         # Create a list of all images with their labels
-        images = []
+        all_images = []
         for class_name, images in class_images.items():
             label = class_to_label[class_name]
             for img_path in images:
-                images.append((img_path, label))
+                all_images.append((img_path, label))
 
         # Shuffle the images
         random.seed(42)  # For reproducibility
-        random.shuffle(images)
+        random.shuffle(all_images)
 
-        train_split = int(len(images) * 0.7)
+        train_split = int(len(all_images) * 0.7)
 
-        train_images = images[:train_split]
-        val_images = images[train_split:]
-        test_images = images
+        train_images = all_images[:train_split]
+        val_images = all_images[train_split:]
+        test_images = all_images
         # Write split files
         splits = {
             'train': train_images,
