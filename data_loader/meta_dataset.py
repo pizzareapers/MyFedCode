@@ -11,13 +11,13 @@ from functools import lru_cache
 def GetDataLoaderDict(dataset_dict, batch_size):
     """Create optimized DataLoader dictionary from dataset dictionary."""
     # Determine optimal number of workers based on CPU cores
-    num_workers = min(os.cpu_count() or 4, 8)  # Avoid using too many workers
+    num_workers = 4  # num_workers for each domain and split(train/val/test)
 
     dataloader_kwargs = {
         'num_workers': num_workers,
         'pin_memory': True,
         'persistent_workers': True,
-        'prefetch_factor': 4,  # Prefetch 4 batches per worker
+        'prefetch_factor': 4,
     }
 
     # Create DataLoader dictionary with optimized settings
