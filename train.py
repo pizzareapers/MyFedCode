@@ -25,7 +25,7 @@ def get_argparse():
     parser.add_argument("--test_domain", type=str, default='c',
                         choices=['p', 'a', 'c', 's', 'r'], help='the domain name for testing')
     parser.add_argument('--batch_size', help='batch_size', type=int, default=128)
-    parser.add_argument('--local_epochs', help='epochs number', type=int, default=2)
+    parser.add_argument('--local_epochs', help='epochs number', type=int, default=30)
     parser.add_argument('--comm', help='epochs number', type=int, default=200)
     parser.add_argument('--lr', help='learning rate', type=float, default=0.001)
     parser.add_argument('--step_size', help='rate weight step', type=float, default=0.2)

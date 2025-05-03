@@ -51,10 +51,10 @@ Please put the datasets in the following directory structure:
 │   │   ├── sketch
 ```
 
-Then set the root directory in the make_datasets.sh file and run:
+Then set the root directory in the make_datasets_path.sh file and run:
 
 ```sh
-sh make_datasets.sh
+sh make_datasets_path.sh
 ```
 
 ## Train
